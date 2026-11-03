@@ -1,9 +1,6 @@
 name: build-eth-dex
 on: [push]
 
-permissions:
-  contents: read
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -15,28 +12,31 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      # 不用第三方 android-actions，直接命令行装 SDK，避开 Node 弃用警告
-      - name: install android sdk
+      - name: setup android sdk
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y android-sdk cmdline-tools
-          yes | sdkmanager --licenses
-          sdkmanager "platforms;android-34" "build-tools;34.0.0"
+          mkdir -p $HOME/android-sdk/cmdline-tools
+          cd $HOME/android-sdk/cmdline-tools
+          curl -o tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q tools.zip
+          mv cmdline-tools latest
+          cd $HOME/android-sdk
+          yes | latest/bin/sdkmanager --licenses
+          latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0"
 
       - name: compile
         run: |
-          export ANDROID_HOME=${ANDROID_HOME:-/usr/lib/android-sdk}
-          if [ ! -d "$ANDROID_HOME/platforms/android-34" ]; then
-            ANDROID_HOME=$HOME/android-sdk
-            mkdir -p "$ANDROID_HOME"
-            sdkmanager --sdk_root="$ANDROID_HOME" "platforms;android-34" "build-tools;34.0.0"
-          fi
+          export ANDROID_HOME=$HOME/android-sdk
           AJ=$ANDROID_HOME/platforms/android-34/android.jar
           D8=$ANDROID_HOME/build-tools/34.0.0/d8
-          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "AJ=$AJ"
+          echo "D8=$D8"
+          ls "$AJ" 2>&1
           mkdir -p out
-          javac -source 8 -target 8 -bootclasspath "$AJ" -cp "$AJ" -d out src/com/ethtether/EthTether.java
-          "$D8" --min-api 24 --output . out/com/ethtether/EthTether.class --lib "$AJ"
+          javac -source 8 -target 8 -bootclasspath "$AJ" -cp "$AJ" -d out src/com/ethtether/EthTether.java 2>&1
+          echo "--- javac done ---"
+          "$D8" --min-api 24 --output . out/com/ethtether/EthTether.class --lib "$AJ" 2>&1
+          echo "--- d8 done ---"
+          ls -la classes.dex 2>&1
 
       - uses: actions/upload-artifact@v7
         with:

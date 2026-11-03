@@ -5,19 +5,19 @@ import android.net.ConnectivityManager;
 import android.os.Handler;
 import android.os.Looper;
 
+import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class EthTether {
-    // TETHERING_ETHERNET = 5
     private static final int TETHERING_ETHERNET = 5;
 
     public static void main(String[] args) {
         System.out.println("EthTether: start");
         try {
-            // 获取 system context
             Class<?> at = Class.forName("android.app.ActivityThread");
             Context ctx = (Context) at.getMethod("currentApplication").invoke(null);
             if (ctx == null) {
@@ -25,32 +25,34 @@ public class EthTether {
                 ctx = (Context) at.getMethod("getSystemContext").invoke(th);
             }
             if (ctx == null) {
-                System.err.println("EthTether: no context");
+                System.err.println("no context");
                 System.exit(1);
             }
 
             ConnectivityManager cm = (ConnectivityManager)
                     ctx.getSystemService(Context.CONNECTIVITY_SERVICE);
 
-            // 动态代理 OnStartTetheringCallback
             Class<?> cbClass = Class.forName(
                     "android.net.ConnectivityManager$OnStartTetheringCallback");
+
             CountDownLatch latch = new CountDownLatch(1);
             AtomicBoolean ok = new AtomicBoolean(false);
 
-            Object callback = java.lang.reflect.Proxy.newProxyInstance(
+            Object callback = Proxy.newProxyInstance(
                     cbClass.getClassLoader(),
                     new Class<?>[]{cbClass},
-                    (proxy, method, margs) -> {
-                        System.out.println("EthTether: cb " + method.getName());
-                        if ("onTetheringStarted".equals(method.getName())) {
-                            ok.set(true);
+                    new InvocationHandler() {
+                        @Override
+                        public Object invoke(Object proxy, Method method, Object[] margs) {
+                            System.out.println("cb:" + method.getName());
+                            if ("onTetheringStarted".equals(method.getName())) {
+                                ok.set(true);
+                            }
+                            latch.countDown();
+                            return null;
                         }
-                        latch.countDown();
-                        return null;
                     });
 
-            // 查找 startTethering(type, showUi, callback, handler)
             Method m = null;
             for (Method mm : cm.getClass().getDeclaredMethods()) {
                 if ("startTethering".equals(mm.getName())
@@ -60,22 +62,20 @@ public class EthTether {
                 }
             }
             if (m == null) {
-                System.err.println("EthTether: startTethering not found");
+                System.err.println("startTethering not found");
                 System.exit(2);
             }
 
-            // 调用
-            Handler handler = new Handler(Looper.getMainLooper());
-            m.invoke(cm, TETHERING_ETHERNET, false, callback, handler);
+            m.invoke(cm, TETHERING_ETHERNET, false, callback,
+                    new Handler(Looper.getMainLooper()));
 
-            // 等待回调
             latch.await(10, TimeUnit.SECONDS);
 
             System.out.println(ok.get() ? "RESULT:OK" : "RESULT:NO_CALLBACK");
             System.exit(0);
 
         } catch (Throwable e) {
-            System.err.println("EthTether: ERR " + e);
+            System.err.println("ERR:" + e);
             e.printStackTrace();
             System.exit(3);
         }

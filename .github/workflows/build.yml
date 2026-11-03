@@ -1,0 +1,23 @@
+名称: 构建以太坊去中心化交易所
+在: [推]
+职位:
+  构建:
+    运行于: ubuntu-latest
+    步骤:
+      - 使用: actions/checkout@v4
+      - 使用: actions/setup-java@v4
+        与:
+          发行版: Temurin
+          java-version: 17
+      - 使用: android-actions/setup-android@v3
+      - 运行: sdkmanager "platforms;android-34" "build-tools;34.0.0"
+      - 名称: 编译
+        运行: |
+          AJ=$ANDROID_HOME/platforms/android-34/android.jar
+          mkdir -p out
+          javac -source 8 -target 8 -cp "$AJ" -d out src/com/ethtether/EthTether.java
+          $ANDROID_HOME/build-tools/34.0.0/d8 --output . out/com/ethtether/EthTether.class --lib "$AJ"
+      - 使用: actions/upload-artifact@v4
+        与:
+          名称: eth-tether-dex
+          路径: classes.dex

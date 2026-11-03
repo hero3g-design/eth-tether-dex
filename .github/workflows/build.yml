@@ -14,29 +14,35 @@ jobs:
 
       - name: setup android sdk
         run: |
+          set -euxo pipefail
           mkdir -p $HOME/android-sdk/cmdline-tools
           cd $HOME/android-sdk/cmdline-tools
-          curl -o tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-          unzip -q tools.zip
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O tools.zip
+          unzip -qo tools.zip
           mv cmdline-tools latest
-          cd $HOME/android-sdk
-          yes | latest/bin/sdkmanager --licenses
-          latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0"
+          export ANDROID_HOME=$HOME/android-sdk
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0"
 
       - name: compile
         run: |
+          set -euxo pipefail
           export ANDROID_HOME=$HOME/android-sdk
+          export JAVA_HOME=$JAVA_HOME
+          export PATH=$JAVA_HOME/bin:$PATH
+          echo "JAVA_HOME=$JAVA_HOME"
+          echo "which javac:"
+          which javac || echo "javac NOT FOUND"
+          javac -version
           AJ=$ANDROID_HOME/platforms/android-34/android.jar
           D8=$ANDROID_HOME/build-tools/34.0.0/d8
-          echo "AJ=$AJ"
-          echo "D8=$D8"
-          ls "$AJ" 2>&1
+          ls -la "$AJ"
           mkdir -p out
-          javac -source 8 -target 8 -bootclasspath "$AJ" -cp "$AJ" -d out src/com/ethtether/EthTether.java 2>&1
-          echo "--- javac done ---"
-          "$D8" --min-api 24 --output . out/com/ethtether/EthTether.class --lib "$AJ" 2>&1
-          echo "--- d8 done ---"
-          ls -la classes.dex 2>&1
+          javac -source 8 -target 8 -bootclasspath "$AJ" -cp "$AJ" -d out src/com/ethtether/EthTether.java
+          echo "=== javac OK ==="
+          "$D8" --min-api 24 --output . out/com/ethtether/EthTether.class --lib "$AJ"
+          echo "=== d8 OK ==="
+          ls -la classes.dex
 
       - uses: actions/upload-artifact@v7
         with:

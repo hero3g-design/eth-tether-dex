@@ -1,24 +1,44 @@
 name: build-eth-dex
 on: [push]
+
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
-      - uses: android-actions/setup-android@v3
-      - run: yes | sdkmanager --licenses
-      - run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
+
+      # 不用第三方 android-actions，直接命令行装 SDK，避开 Node 弃用警告
+      - name: install android sdk
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y android-sdk cmdline-tools
+          yes | sdkmanager --licenses
+          sdkmanager "platforms;android-34" "build-tools;34.0.0"
+
       - name: compile
         run: |
+          export ANDROID_HOME=${ANDROID_HOME:-/usr/lib/android-sdk}
+          if [ ! -d "$ANDROID_HOME/platforms/android-34" ]; then
+            ANDROID_HOME=$HOME/android-sdk
+            mkdir -p "$ANDROID_HOME"
+            sdkmanager --sdk_root="$ANDROID_HOME" "platforms;android-34" "build-tools;34.0.0"
+          fi
           AJ=$ANDROID_HOME/platforms/android-34/android.jar
+          D8=$ANDROID_HOME/build-tools/34.0.0/d8
+          echo "ANDROID_HOME=$ANDROID_HOME"
           mkdir -p out
           javac -source 8 -target 8 -bootclasspath "$AJ" -cp "$AJ" -d out src/com/ethtether/EthTether.java
-          $ANDROID_HOME/build-tools/34.0.0/d8 --min-api 24 --output . out/com/ethtether/EthTether.class --lib "$AJ"
-      - uses: actions/upload-artifact@v4
+          "$D8" --min-api 24 --output . out/com/ethtether/EthTether.class --lib "$AJ"
+
+      - uses: actions/upload-artifact@v7
         with:
           name: eth-tether-dex
           path: classes.dex
